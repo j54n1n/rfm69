@@ -57,6 +57,11 @@ cat /etc/modprobe.d/raspi-blacklist.conf
 `sudo pacman -S wiringpi`.
 * Compile the RFM69 library with `g++` and `-lwiringPi`.
 * Linux kernels less than version 4.1.x may require root for execution.
+* The declaration of the SpiDevice class is nearly identical as for the Arduino
+except that the first template parameter is used instead to describe the
+selected SPI channel. For example channel 0 is SPI bus with CE0 pin, channel 1
+is SPI bus with CE1 ect. it is not the actual Slave Select GPIO pin as it is
+used in the Arduino implementation.
 
 ### Further reading
 * http://jeelabs.org/book/1513d

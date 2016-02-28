@@ -43,6 +43,21 @@ Please check your regulations for telecomunications.
 byte is normally set to 0. It encodes in bits from 0 to 5 either the destination
 or origin Node ID and in bits from 6 to 7 some status flags.
 
+## Instructions (WiringPi)
+* Make sure that the SPI module is either enabled in the Device Tree and/or
+loaded by the current Linux kernel, ie. not blacklisted. For example on
+Raspberry Pi:
+```
+cat /boot/config.txt | grep "^dtparam=spi=on"
+dtparam=spi=on
+cat /etc/modprobe.d/raspi-blacklist.conf
+#blacklist spi_bcm2708
+```
+* Install WiringPi either with `sudo apt-get install wiringpi` or
+`sudo pacman -S wiringpi`.
+* Compile the RFM69 library with `g++` and `-lwiringPi`.
+* Linux kernels less than version 4.1.x may require root for execution.
+
 ### Further reading
 * http://jeelabs.org/book/1513d
 * http://jeelabs.org/book/1522c

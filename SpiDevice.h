@@ -28,20 +28,34 @@ THE SOFTWARE.
 
 #include <stdint.h>
 
-#if !defined(ARDUINO)
-#error Architecture not supported!
-#endif
-
-
 #ifdef ARDUINO
 #include <Arduino.h>
 #include <SPI.h>
+#else
+#include <wiringPi.h>
+#include <wiringPiSPI.h>
+#endif
+
+#ifndef ARDUINO
+#define SpiDevice_reverseBits(byte) (     \
+        (((byte) & 0x01) ? 0x80 : 0x00) | \
+        (((byte) & 0x02) ? 0x40 : 0x00) | \
+        (((byte) & 0x04) ? 0x20 : 0x00) | \
+        (((byte) & 0x08) ? 0x10 : 0x00) | \
+        (((byte) & 0x10) ? 0x08 : 0x00) | \
+        (((byte) & 0x20) ? 0x04 : 0x00) | \
+        (((byte) & 0x40) ? 0x02 : 0x00) | \
+        (((byte) & 0x80) ? 0x01 : 0x00)   \
+)
 #endif
 
 enum SpiBitOrder {
 #ifdef ARDUINO
 	SpiBitOrderLsbFirst = LSBFIRST,
 	SpiBitOrderMsbFirst = MSBFIRST
+#else
+        SpiBitOrderLsbFirst,
+        SpiBitOrderMsbFirst
 #endif
 };
 
@@ -51,6 +65,11 @@ enum SpiMode {
 	SpiMode1 = SPI_MODE1,
 	SpiMode2 = SPI_MODE2,
 	SpiMode3 = SPI_MODE3
+#else
+        SpiMode0 = 0,
+        SpiMode1 = 1,
+        SpiMode2 = 2,
+        SpiMode3 = 3
 #endif
 };
 
@@ -67,6 +86,9 @@ public:
 		digitalWrite(PIN_SS, HIGH);
 		pinMode(PIN_SS, OUTPUT);
 		SPI.begin();
+#else
+		wiringPiSetup();
+		wiringPiSPISetupMode(PIN_SS, F_SCK, MODE);
 #endif
 	}
 
@@ -80,7 +102,18 @@ public:
 		SPI.endTransaction();
 		return in;
 #else
-		return 0;
+		if (BIT_ORDER == SpiBitOrderLsbFirst) {
+			command = SpiDevice_reverseBits(command);
+			value   = SpiDevice_reverseBits(value);
+		}
+		uint8_t buffer[2] = { command, value };
+		if (wiringPiSPIDataRW(PIN_SS, buffer, sizeof(buffer)) < 0) {
+			return 0;
+		}
+		if (BIT_ORDER == SpiBitOrderLsbFirst) {
+			return SpiDevice_reverseBits(buffer[1]);
+		}
+		return buffer[1];
 #endif
 	}
 };

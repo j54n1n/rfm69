@@ -2,13 +2,23 @@
 #define RFM_69_H
 
 #include <stdint.h>
+#include <stdlib.h>
 
 #ifdef ARDUINO
 #include <Arduino.h>
 #endif
 
-// Native mode RF69 driver. See also http://jeelabs.org/book/1522c/.
-template<typename SpiDevice>
+//! Available RFM69 models.
+enum Rfm69Model {
+	Rfm69ModelW, //!< Model RFM69W max. transmit power +13dBm.
+	Rfm69ModelCW = Rfm69ModelW, //!< Model RFM69CW max. transmit power +13dBm.
+	Rfm69ModelHW, //!< Model RFM69HW max. transmit power +20dBm.
+	Rfm69ModelHCW = Rfm69ModelHW //!< Model RFM69HCW max. transmit power +20dBm.
+};
+
+//! Native mode RF69 driver. See also http://jeelabs.org/book/1522c/ and
+//! https://github.com/ahessling/RFM69-STM32.
+template<typename SpiDevice, Rfm69Model RFM69_MODEL = Rfm69ModelW>
 class Rfm69 {
 
 	enum {
@@ -16,6 +26,7 @@ class Rfm69 {
 		REG_OPMODE = 0x01,
 		REG_FRFMSB = 0x07,
 		REG_PALEVEL = 0x11,
+		REG_OCP = 0x13,
 		REG_LNAVALUE = 0x18,
 		REG_AFCMSB = 0x1F,
 		REG_AFCLSB = 0x20,
@@ -31,6 +42,8 @@ class Rfm69 {
 		REG_FIFOTHRESH = 0x3C,
 		REG_PKTCONFIG2 = 0x3D,
 		REG_AESKEYMSB = 0x3E,
+		REG_TESTPA1 = 0x5A,
+		REG_TESTPA2 = 0x5C,
 
 		MODE_SLEEP = 0 << 2,
 		MODE_STANDBY = 1 << 2,
@@ -63,6 +76,7 @@ class Rfm69 {
 
 	SpiDevice spi;
 	volatile uint8_t mode;
+	bool paBoost;
 
 public:
 	int16_t afc;
@@ -73,7 +87,7 @@ public:
 
 	void init(uint8_t id, uint8_t group, int freq);
 	void encrypt(const char* key);
-	void txPower(uint8_t level);
+	int setTransmitPower(int8_t dBm);
 
 	int receive(void* ptr, int length);
 	void send(uint8_t header, const void* ptr, int length);
@@ -82,16 +96,32 @@ public:
 
 // driver implementation
 
-template<typename SpiDevice>
-void Rfm69<SpiDevice>::setMode(uint8_t newMode) {
+template<typename SpiDevice, Rfm69Model RFM69_MODEL>
+void Rfm69<SpiDevice, RFM69_MODEL>::setMode(uint8_t newMode) {
+	const uint8_t REG_OCP_ON = 0x1A;
+	const uint8_t REG_OCP_OFF = 0x0F;
+	const uint8_t REG_TESTPA1_HIPOWER = 0x5D;
+	const uint8_t REG_TESTPA1_LOPOWER = 0x55;
+	const uint8_t REG_TESTPA2_HIPOWER = 0x7C;
+	const uint8_t REG_TESTPA2_LOPOWER = 0x70;
 	mode = newMode;
+	if ((RFM69_MODEL == Rfm69ModelHW) && (mode == MODE_TRANSMIT) && paBoost) {
+		writeReg(REG_OCP, REG_OCP_OFF);
+		writeReg(REG_TESTPA1, REG_TESTPA1_HIPOWER);
+		writeReg(REG_TESTPA2, REG_TESTPA2_HIPOWER);
+	}
+	else {
+		writeReg(REG_OCP, REG_OCP_ON);
+		writeReg(REG_TESTPA1, REG_TESTPA1_LOPOWER);
+		writeReg(REG_TESTPA2, REG_TESTPA2_LOPOWER);
+	}
 	writeReg(REG_OPMODE, (readReg(REG_OPMODE) & 0xE3) | newMode);
 	while ((readReg(REG_IRQFLAGS1) & IRQ1_MODEREADY) == 0)
 		;
 }
 
-template<typename SpiDevice>
-void Rfm69<SpiDevice>::setFrequency(uint32_t hz) {
+template<typename SpiDevice, Rfm69Model RFM69_MODEL>
+void Rfm69<SpiDevice, RFM69_MODEL>::setFrequency(uint32_t hz) {
 	// accept any frequency scale as input, including KHz and MHz
 	// multiply by 10 until freq >= 100 MHz (don't specify 0 as input!)
 	while (hz < 100000000)
@@ -108,8 +138,8 @@ void Rfm69<SpiDevice>::setFrequency(uint32_t hz) {
 	writeReg(REG_FRFMSB + 2, frf << 6);
 }
 
-template<typename SpiDevice>
-void Rfm69<SpiDevice>::configure(const uint8_t* p) {
+template<typename SpiDevice, Rfm69Model RFM69_MODEL>
+void Rfm69<SpiDevice, RFM69_MODEL>::configure(const uint8_t* p) {
 	while (true) {
 		uint8_t cmd = p[0];
 		if (cmd == 0)
@@ -119,8 +149,8 @@ void Rfm69<SpiDevice>::configure(const uint8_t* p) {
 	}
 }
 
-template<typename SpiDevice>
-void Rfm69<SpiDevice>::init(uint8_t id, uint8_t group, int freq) {
+template<typename SpiDevice, Rfm69Model RFM69_MODEL>
+void Rfm69<SpiDevice, RFM69_MODEL>::init(uint8_t id, uint8_t group, int freq) {
 	static const uint8_t configRegs[] = {
 		// POR value is better for first rf_sleep  0x01, 0x00, // OpMode = sleep
 		0x02, 0x00, // DataModul = packet mode, fsk
@@ -166,10 +196,13 @@ void Rfm69<SpiDevice>::init(uint8_t id, uint8_t group, int freq) {
 	setFrequency(freq);
 
 	writeReg(REG_SYNCVALUE2, group);
+
+	// Set best power amplifier value that is common for both W and HW models.
+	setTransmitPower(+13/*dBm*/);
 }
 
-template<typename SpiDevice>
-void Rfm69<SpiDevice>::encrypt(const char* key) {
+template<typename SpiDevice, Rfm69Model RFM69_MODEL>
+void Rfm69<SpiDevice, RFM69_MODEL>::encrypt(const char* key) {
 	uint8_t cfg = readReg(REG_PKTCONFIG2) & ~0x01;
 	if (key) {
 		for (int i = 0; i < 16; ++i) {
@@ -182,19 +215,69 @@ void Rfm69<SpiDevice>::encrypt(const char* key) {
 	writeReg(REG_PKTCONFIG2, cfg);
 }
 
-template<typename SpiDevice>
-void Rfm69<SpiDevice>::txPower(uint8_t level) {
-	// TODO: Support HW devices.
-	writeReg(REG_PALEVEL, (readReg(REG_PALEVEL) & ~0x1F) | level);
+template<typename SpiDevice, Rfm69Model RFM69_MODEL>
+int Rfm69<SpiDevice, RFM69_MODEL>::setTransmitPower(int8_t dBm) {
+	const int8_t LO_POWER_PA0_MIN = -18; // dBm
+	const int8_t HI_POWER_PA1_MIN = -2; // dBm
+	const int8_t LO_POWER_PA0_MAX = +13; // dBm
+	const int8_t HI_POWER_PA1_MAX = LO_POWER_PA0_MAX;
+	const int8_t HI_POWER_PA1_PA2_MAX = +17; // dBm
+	const int8_t HI_POWER_PABOOST_MAX = +20; // dBm
+	const uint8_t LO_POWER_PA0_OFFSET = +18U;
+	const uint8_t HI_POWER_PA1_OFFSET = LO_POWER_PA0_OFFSET;
+	const uint8_t HI_POWER_PA1_PA2_OFFSET = +14U;
+	const uint8_t HI_POWER_PABOOST_OFFSET = +11U;
+	const uint8_t REG_PA0_ON = 0x80;
+	const uint8_t REG_PA1_ON = 0x40;
+	const uint8_t REG_PA1_PA2_ON = 0x60;
+	// Allow only valid power ranges.
+	if ((dBm < LO_POWER_PA0_MIN) || (dBm > HI_POWER_PABOOST_MAX)) {
+		return EXIT_FAILURE;
+	}
+	// Low power devices support transmit powers from -18dBm to +13dBm.
+	if ((RFM69_MODEL == Rfm69ModelW) && (dBm > LO_POWER_PA0_MAX)) {
+		return EXIT_FAILURE;
+	}
+	// High power devices support transmit powers from -2dBm to +20dBm.
+	if ((RFM69_MODEL == Rfm69ModelHW) && (dBm < HI_POWER_PA1_MIN)) {
+		return EXIT_FAILURE;
+	}
+	if (RFM69_MODEL == Rfm69ModelW) {
+		// Only power amplifier PA0 is allowed.
+		uint8_t powerLevel = LO_POWER_PA0_OFFSET + dBm;
+		writeReg(REG_PALEVEL, REG_PA0_ON | powerLevel);
+	}
+	if (RFM69_MODEL == Rfm69ModelHW) {
+		if ((dBm >= HI_POWER_PA1_MIN) && (dBm <= HI_POWER_PA1_MAX)) {
+			// Use power amplifier PA1 on PABOOST.
+			uint8_t powerLevel = HI_POWER_PA1_OFFSET + dBm;
+			writeReg(REG_PALEVEL, REG_PA1_ON | powerLevel);
+		}
+		else if ((dBm > HI_POWER_PA1_MAX) && (dBm <= HI_POWER_PA1_PA2_MAX)) {
+			// Use combined power amplifiers PA1 and PA2 on PABOOST.
+			uint8_t powerLevel = HI_POWER_PA1_PA2_OFFSET + dBm;
+			writeReg(REG_PALEVEL, REG_PA1_PA2_ON | powerLevel);
+		}
+		else {
+			// Use PA1 and PA2 with high power amplifier on PABOOST.
+			// Activate the afterburner ^^.
+			uint8_t powerLevel = HI_POWER_PABOOST_OFFSET + dBm;
+			writeReg(REG_PALEVEL, REG_PA1_PA2_ON | powerLevel);
+			paBoost = true;
+			return EXIT_SUCCESS;
+		}
+	}
+	paBoost = false;
+	return EXIT_SUCCESS;
 }
 
-template<typename SpiDevice>
-void Rfm69<SpiDevice>::sleep() {
+template<typename SpiDevice, Rfm69Model RFM69_MODEL>
+void Rfm69<SpiDevice, RFM69_MODEL>::sleep() {
 	setMode(MODE_SLEEP);
 }
 
-template<typename SpiDevice>
-int Rfm69<SpiDevice>::receive(void* ptr, int length) {
+template<typename SpiDevice, Rfm69Model RFM69_MODEL>
+int Rfm69<SpiDevice, RFM69_MODEL>::receive(void* ptr, int length) {
 	if (mode != MODE_RECEIVE)
 		setMode(MODE_RECEIVE);
 	else {
@@ -231,8 +314,9 @@ int Rfm69<SpiDevice>::receive(void* ptr, int length) {
 	return -1;
 }
 
-template<typename SpiDevice>
-void Rfm69<SpiDevice>::send(uint8_t header, const void* ptr, int length) {
+template<typename SpiDevice, Rfm69Model RFM69_MODEL>
+void Rfm69<SpiDevice, RFM69_MODEL>::send(
+		uint8_t header, const void* ptr, int length) {
 	setMode(MODE_SLEEP);
 
 	writeReg(REG_FIFO, length + 2);

@@ -68,6 +68,7 @@ used in the Arduino implementation.
 *MOSI*, *MISO*, *SCK*, *NSS*, and *GND*. Beware that in transmit mode the HW/HCW
 module can consume up to *130mA* from the 3.3V power supply. See also the
 [RFM69HW Datasheet](http://www.hoperf.com/upload/rf/RFM69HW-V1.3.pdf).
+
 ![RFM69HW Pinout](https://lowpowerlab.com/forum/index.php?action=dlattach;topic=239.0;attach=102;image "RFM69 Pinout")
 * Beware that the *high power* setting with *+20dBm* transmit power may be not
 legal to be used in your country. Please check the regulations for

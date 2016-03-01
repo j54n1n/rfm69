@@ -14,7 +14,8 @@ Rfm69<SpiDevice<10> > rfm69;
 ```
 * Here the `SpiDevice` represents the  SPI device abstraction of the attached
 RFM69 radio. In this case for example the radio was attached to the SPI bus with
-the Slave Select line connected to Arduino digital pin number 10.
+the Slave Select line connected to Arduino digital pin number 10. See also the
+library [SpiDevice](https://github.com/j54n1n/spidevice).
 * The initalisation routine takes as arguments the *Node ID*, the *Group ID*,
 and the *Transceiver Frequency*. For example following code will setup *Node ID*
 = 28, *Group ID* = 42, and *Transceiver Frequency* = 868,6MHz:

@@ -103,17 +103,28 @@ class Rfm69 {
 	SpiDevice spi;
 	volatile uint8_t mode;
 	bool paBoost;
+	uint8_t rssi;
+	uint8_t lna;
 
 public:
 	int16_t afc;
-	uint8_t rssi;
-	uint8_t lna;
 	uint8_t myId;
 	uint8_t parity;
 
 	void init(uint8_t id, uint8_t group, int freq);
 	void encrypt(const char* key);
+	//! Set the transmit power in dBm.
+	//! For W/CW models valid values are from -18dB (min.) to +13dBm (max.).
+	//! For HW/HCW models valid values are from -2dB (min.) to +20dBm (max.).
+	//! \returns EXIT_FAILURE for invalid values or otherwise EXIT_SUCCESS.
 	int setTransmitPower(int8_t dBm);
+	//! Retrive the automatic LNA gain setting from the last received packet.
+	//! \returns the gain ranging from +0dB (max. gain) to -48dB (min. gain).
+	//! \returns a non-negative number greater than 0 in case an error occurred.
+	int8_t getLnaGain(void);
+	//! Retrive the strength indicator in dBm of the last received packet.
+	//! \returns a value ranging from -115dBm (weak) to +0dBm (strong).
+	int8_t getRssiValue(void);
 
 	int receive(void* ptr, int length);
 	void send(uint8_t header, const void* ptr, int length);
@@ -338,6 +349,22 @@ int Rfm69<SpiDevice, RFM69_MODEL>::receive(void* ptr, int length) {
 		}
 	}
 	return -1;
+}
+
+template<typename SpiDevice, Rfm69Model RFM69_MODEL>
+int8_t Rfm69<SpiDevice, RFM69_MODEL>::getLnaGain(void) {
+	const int8_t LNA_GAINS[] = { 0x7F/*reserved*/,
+		0/*dB*/, -6/*dB*/, -12/*dB*/, -24/*dB*/, -36/*dB*/, -48/*dB*/
+	};
+	if (lna >= sizeof(LNA_GAINS)) {
+		return LNA_GAINS[0];
+	}
+	return LNA_GAINS[lna];
+}
+
+template<typename SpiDevice, Rfm69Model RFM69_MODEL>
+int8_t Rfm69<SpiDevice, RFM69_MODEL>::getRssiValue(void) {
+	return -rssi / 2;
 }
 
 template<typename SpiDevice, Rfm69Model RFM69_MODEL>

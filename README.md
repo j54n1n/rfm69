@@ -63,7 +63,18 @@ selected SPI channel. For example channel 0 is SPI bus with CE0 pin, channel 1
 is SPI bus with CE1 ect. it is not the actual Slave Select GPIO pin as it is
 used in the Arduino implementation.
 
+## Hardware
+* The *RFM69* radio needs at least to be connected to the SPI pins *3.3V*,
+*MOSI*, *MISO*, *SCK*, *NSS*, and *GND*. Beware that in transmit mode the HW/HCW
+module can consume up to *130mA* from the 3.3V power supply. See also the
+[RFM69HW Datasheet](http://www.hoperf.com/upload/rf/RFM69HW-V1.3.pdf).
+![RFM69HW Pinout](https://lowpowerlab.com/forum/index.php?action=dlattach;topic=239.0;attach=102;image "RFM69 Pinout")
+* Beware that the *high power* setting with *+20dBm* transmit power may be not
+legal to be used in your country. Please check the regulations for
+telecomunication of your country.
+
 ### Further reading
+* http://www.hoperf.com/rf_transceiver/modules/
 * http://jeelabs.org/book/1513d
 * http://jeelabs.org/book/1522c
 * http://jeelabs.org/wp-content/uploads/2015/05/20/rfm69-on-raspberry-pi

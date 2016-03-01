@@ -2,6 +2,7 @@
 The MIT License (MIT)
 
 Copyright (c) 2014 Jean-Claude Wippler
+Copyright (c) 2014 Felix Rusu
 Copyright (c) 2015 André Heßling
 Copyright (c) 2016 Julian Sanin
 
@@ -51,6 +52,7 @@ class Rfm69 {
 		REG_FIFO = 0x00,
 		REG_OPMODE = 0x01,
 		REG_FRFMSB = 0x07,
+		REG_OSC1 = 0x0A,
 		REG_PALEVEL = 0x11,
 		REG_OCP = 0x13,
 		REG_LNAVALUE = 0x18,
@@ -68,6 +70,8 @@ class Rfm69 {
 		REG_FIFOTHRESH = 0x3C,
 		REG_PKTCONFIG2 = 0x3D,
 		REG_AESKEYMSB = 0x3E,
+		REG_TEMP1 = 0x4E,
+		REG_TEMP2 = 0x4F,
 		REG_TESTPA1 = 0x5A,
 		REG_TESTPA2 = 0x5C,
 
@@ -79,7 +83,6 @@ class Rfm69 {
 		START_TX = 0xC2,
 		STOP_TX = 0x42,
 
-		RCCALSTART = 0x80,
 		IRQ1_MODEREADY = 1 << 7,
 		IRQ1_RXREADY = 1 << 6,
 		IRQ1_SYNADDRMATCH = 1 << 0,
@@ -125,6 +128,18 @@ public:
 	//! Retrive the strength indicator in dBm of the last received packet.
 	//! \returns a value ranging from -115dBm (weak) to +0dBm (strong).
 	int8_t getRssiValue(void);
+	//! Retrieve the temperature in degrees Celsius (°C) of transceiver chip.
+	//! \param offsetCalibration adds a correction offset to the reading in °C.
+	//! Recalibration of the internal oscillator is recommended in case of large
+	//! temperature changes.
+	//! \see calibrateOscillator
+	//! \returns the internal chip temperature in °C.
+	int8_t getTemperature(int8_t offsetCalibration = 0);
+	//! Recalibrates the internal oscillator of the transceiver chip.
+	//! Recalibration of the internal oscillator is recommended in case of large
+	//! temperature changes.
+	//! \see getTemperature
+	void calibrateOscillator(void);
 
 	int receive(void* ptr, int length);
 	void send(uint8_t header, const void* ptr, int length);
@@ -383,6 +398,26 @@ void Rfm69<SpiDevice, RFM69_MODEL>::send(
 		// TODO: Do something else than busy wait.
 	}
 	setMode(MODE_STANDBY);
+}
+
+template<typename SpiDevice, Rfm69Model RFM69_MODEL>
+int8_t Rfm69<SpiDevice, RFM69_MODEL>::getTemperature(int8_t offsetCalibration) {
+	const uint8_t TEMP_MEAS_START = 0x08;
+	const uint8_t TEMP_MEAS_RUNNING = 0x04;
+	const int8_t TEMP_COEFFICIENT = -90; // °C.
+	setMode(MODE_STANDBY);
+	writeReg(REG_TEMP1, TEMP_MEAS_START);
+	while (readReg(REG_TEMP1) & TEMP_MEAS_RUNNING);
+	return (~readReg(REG_TEMP2) + TEMP_COEFFICIENT + offsetCalibration);
+}
+
+template<typename SpiDevice, Rfm69Model RFM69_MODEL>
+void Rfm69<SpiDevice, RFM69_MODEL>::calibrateOscillator(void) {
+	const uint8_t RC_CAL_START = 0x80;
+	const uint8_t RC_CAL_DONE = 0x40;
+	setMode(MODE_STANDBY);
+	writeReg(REG_OSC1, RC_CAL_START);
+	while ((readReg(REG_OSC1) & RC_CAL_DONE) == 0); // Wait till calibrated.
 }
 
 #endif
